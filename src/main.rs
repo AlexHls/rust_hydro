@@ -57,7 +57,7 @@ fn apply_bcs(data_cc: &mut [[[f64; GRIDSIZE]; GRIDSIZE]; NVARS]) {
     }
 }
 
-fn dump_output(data: &[[[f64; GRIDSIZE]; GRIDSIZE]; NVARS], nout: i32)  -> std::io::Result<()> {
+fn dump_output(data: &[[[f64; GRIDSIZE]; GRIDSIZE]; NVARS], nout: i32) -> std::io::Result<()> {
     let rho_pathname = format!("data/rho_{:?}.dat", nout);
     let rho_path = Path::new(&rho_pathname);
     let rho_display = rho_path.display();
@@ -112,13 +112,13 @@ fn dump_output(data: &[[[f64; GRIDSIZE]; GRIDSIZE]; NVARS], nout: i32)  -> std::
             u_file.write_all(&data[I_U][i][j].to_be_bytes());
         }
         for i in 0..NX {
-           v_file.write_all(&data[I_V][i][j].to_be_bytes());
+            v_file.write_all(&data[I_V][i][j].to_be_bytes());
         }
         for i in 0..NX {
             p_file.write_all(&data[I_P][i][j].to_be_bytes());
         }
         for i in 0..NX {
-           ps1_file.write_all(&data[I_PS1][i][j].to_be_bytes());
+            ps1_file.write_all(&data[I_PS1][i][j].to_be_bytes());
         }
     }
     Ok(())
@@ -201,7 +201,7 @@ fn riemann(
         c_r = (GAMMA_AD * p_r * inv_rho_r).sqrt();
 
         s_l = u_l.min(u_r) - c_l.max(c_r);
-        s_r = u_l.min(u_r) + c_l.max(c_r);
+        s_r = u_l.max(u_r) + c_l.max(c_r);
 
         dsu_l = s_l - u_l;
         dsu_r = s_r - u_r;
@@ -216,7 +216,7 @@ fn riemann(
 
         phi = chi * (2.0 - chi);
 
-        rhobar = 0.5 * (rho_l - rho_r);
+        rhobar = 0.5 * (rho_l + rho_r);
         cbar = 0.5 * (c_l + c_r);
 
         pstar = 0.5 * (p_l + p_r) - PDIFF * 0.5 * phi * rhobar * cbar * (u_r - u_l);
@@ -299,14 +299,14 @@ fn main() {
                 eta = 0.0;
             }
 
-            prim[I_U][i][j] = MACH_X * (1.0 / 2.0 * eta);
+            prim[I_U][i][j] = MACH_X * (1.0 - 2.0 * eta);
             prim[I_V][i][j] = 0.1 * MACH_X * (2.0 * PI * xi).sin();
 
             prim[I_PS1][i][j] = eta;
         }
     }
 
-    let dt: f64 = 0.5 * CFL * DL / (1.0 * MACH_X);
+    let dt: f64 = 0.5 * CFL * DL / (1.0 + MACH_X);
 
     println!("t: {t}, dt: {dt}");
 
@@ -349,7 +349,7 @@ fn main() {
 
                 cons0[I_P][i][j] =
                     prim[I_P][i][j] * INV_GAMMAM1 + 0.5 * rho * (u.powi(2) + v.powi(2));
-                cons0[I_PS1][i][j] = prim[I_PS1][i][j];
+                cons0[I_PS1][i][j] = prim[I_PS1][i][j] * rho;
             }
         }
 
@@ -370,8 +370,8 @@ fn main() {
 
             for i in 0..NX {
                 for iv in 0..NVARS {
-                    cons[iv][i][j] =
-                        cons0[iv][i][j] - (flux[iv][(i + 1) % GRIDSIZE] - flux[iv][i]) * inv_dl_dthalf;
+                    cons[iv][i][j] = cons0[iv][i][j]
+                        - (flux[iv][(i + 1) % GRIDSIZE] - flux[iv][i]) * inv_dl_dthalf;
                 }
             }
         }
@@ -389,8 +389,8 @@ fn main() {
 
             for j in 0..NY {
                 for iv in 0..NVARS {
-                    cons[iv][i][j] =
-                        cons[iv][i][j] - (flux[iv][(j + 1) % GRIDSIZE] - flux[iv][j]) * inv_dl_dthalf;
+                    cons[iv][i][j] = cons[iv][i][j]
+                        - (flux[iv][(j + 1) % GRIDSIZE] - flux[iv][j]) * inv_dl_dthalf;
                 }
             }
         }
@@ -480,6 +480,13 @@ fn main() {
             }
 
             riemann(NY + 1, dir, &mut q_l, &mut q_r, &mut flux);
+
+            for j in 0..NY {
+                for iv in 0..NVARS {
+                    cons[iv][i][j] =
+                        cons0[iv][i][j] - (flux[iv][(j + 1) % GRIDSIZE] - flux[iv][j]) * inv_dl_dt;
+                }
+            }
         }
 
         for j in 0..NY {
